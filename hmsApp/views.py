@@ -1,4 +1,4 @@
-from django.shortcuts import render
+
 from . models import *
 from . serializers import *
 from rest_framework import generics
@@ -7,6 +7,7 @@ from rest_framework.decorators import api_view,permission_classes
 from django.contrib.auth.models import Group
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
+from rest_framework import status
 
 class DepartmentGet(generics.ListCreateAPIView):
 
@@ -64,3 +65,91 @@ class RegisterUser(APIView):
       
         return Response({'status': 201, 'token': str(token), 'message': "User created successfully"})
     
+
+class GetDoctors(APIView):
+
+    def get(self,request):
+        fields = ('id', 'username')
+        queryset = UserAccount.objects.filter(is_doctor = True)
+        serializers = UserSerializer(queryset, many = True, fields = fields)
+        return Response(serializers.data)
+    
+    def post(self, request):
+
+        serializer = UserSerializer(data = request.data)
+        if serializer.is_valid():
+            return Response({"status": 201,"msg":"Created"})
+
+
+@api_view(["GET","PUT","DELETE"])
+def updateDoctor(request,pk):
+
+    try: 
+        doctor = UserAccount.objects.get(pk = pk)
+    except UserAccount.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+
+        serializer = UserSerializer(doctor)
+        return Response(serializer.data)
+    
+    if request.method == "PUT":
+        
+        serializer = UserSerializer(doctor, data = request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"status": 200,"msg":"Updated"})
+        else:
+            return Response({"status": 500, "msg": serializer.errors})
+        
+
+    if request.method == "DELETE":
+        doctor.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+
+
+class GetPatients(generics.ListCreateAPIView):
+    
+   
+    queryset = UserAccount.objects.filter(is_patient = True)
+    serializer = UserSerializer()
+
+    def list(self, request):
+       
+        queryset = self.get_queryset()
+        serializer = UserSerializer(queryset, many=True, fields = ('id', 'username'))
+        return Response(serializer.data)
+    
+
+
+
+@api_view(["GET","PUT","DELETE"])
+def updatePatient(request,pk):
+
+    try: 
+        patient = UserAccount.objects.get(pk = pk)
+    except UserAccount.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "GET":
+
+        serializer = UserSerializer(patient)
+        return Response(serializer.data)
+    
+    if request.method == "PUT":
+        
+        serializer = UserSerializer(patient, data = request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"status": status.HTTP_200_OK,"msg":"Updated"})
+        else:
+            return Response({"status": status.HTTP_500_INTERNAL_SERVER_ERROR, "msg": serializer.errors})
+        
+
+    if request.method == "DELETE":
+        patient.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
+
