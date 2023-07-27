@@ -1,13 +1,15 @@
 
 from . models import *
 from . serializers import *
-from rest_framework import generics
+from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import api_view,permission_classes
 from django.contrib.auth.models import Group
 from rest_framework.views import APIView
+from django.contrib.auth import login, logout
 from rest_framework.authtoken.models import Token
 from rest_framework import status
+from django.contrib.auth.hashers import check_password
 
 class DepartmentGet(generics.ListCreateAPIView):
 
@@ -26,12 +28,18 @@ class DepartementGetUpDel(generics.RetrieveDestroyAPIView):
 def getPatientsOfDept(request, pk):
 
     dept = Department.objects.get(pk = pk)
-    patient = UserAccount.objects.filter(department = dept)
+    patient = UserAccount.objects.filter(department = dept, is_patient = True)
     serializer = UserSerializer(patient, many = True)
     return Response(serializer.data)
 
 
-
+@api_view(["GET"])
+def getDoctorsOfDept(request,pk):
+    
+    dept = Department.objects.get(pk = pk)
+    patient = UserAccount.objects.filter(department = dept, is_doctor = True)
+    serializer = UserSerializer(patient, many = True)
+    return Response(serializer.data)
 
 
 
@@ -65,6 +73,32 @@ class RegisterUser(APIView):
       
         return Response({'status': 201, 'token': str(token), 'message': "User created successfully"})
     
+@api_view(["POST"])
+def loginUser(request):
+
+    username = request.data["username"]
+    password = request.data["password"]
+
+    try:
+
+        user = UserAccount.objects.get(username = username)
+        if not check_password(password, user.password):
+            return Response(status=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION)
+        token = Token.objects.get_or_create(user = user)[0].key
+        login(request,user)
+        return Response({"token": token, "msg": "Successfully logged in!"}, status=status.HTTP_200_OK)
+    except UserAccount.DoesNotExist:
+        
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(["GET"])
+def logoutUser(request):
+
+    if request.user.auth_token:
+        request.user.auth_token.delete()
+    logout(request)
+    return Response({"msg": "Logged out successfully"}, status=status.HTTP_200_OK)
 
 class GetDoctors(APIView):
 
@@ -150,6 +184,38 @@ def updatePatient(request,pk):
 
     if request.method == "DELETE":
         patient.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PatientRecords(generics.ListCreateAPIView):
+
+    queryset = Patient_Records.objects.all()
+    serializer_class = Patient_recordsSerializer
+
+
+@api_view(["GET","PUT","DELETE"])
+def updateRecords(request,pk):
+
+    try: 
+        patient_rec = Patient_Records.objects.get(pk = pk)
+    except Patient_Records.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    if request.method == "GET":
+
+        serializer = Patient_recordsSerializer(patient_rec)
+        return Response({"record": serializer.data},status= status.HTTP_200_OK)
+    
+    if request.method == "PUT":
+
+        serializer = Patient_recordsSerializer(patient_rec, data = request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({"msg": "Updated successfully"},status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_304_NOT_MODIFIED)
+    
+    if request.method == "DELETE":
+
+        patient_rec.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 

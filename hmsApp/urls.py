@@ -9,4 +9,8 @@ urlpatterns = [
     path('doctors/<int:pk>/', updateDoctor, name="upt_doctor"),
     path('patients/', GetPatients.as_view(), name="patients"),
     path('patients/<int:pk>/', updatePatient, name="upt_patients"),
+    path('patient_records/', PatientRecords.as_view(),name="patient_records"),
+    path('patient_records/<int:pk>/', updateRecords,name="upt_patient_records"),
+    path('login/',loginUser,name="login"),
+    path('logout/', logoutUser, name="logout"),
 ]

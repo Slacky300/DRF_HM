@@ -1,6 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
-
+from autoslug import AutoSlugField
 
 class Department(models.Model):
 
@@ -67,10 +67,11 @@ class UserAccount(AbstractBaseUser, PermissionsMixin):
 
 class Patient_Records(models.Model):
 
-    record_id = models.CharField(max_length=50, unique = True)
+   
     patient_id = models.ForeignKey(UserAccount, on_delete=models.CASCADE, related_name="patients")
     created_date = models.DateField(auto_now=True)
     diagnostics = models.TextField()
+    record_id = AutoSlugField(populate_from = "diagnostics", unique=True)
     observations = models.TextField()
     treatments = models.TextField()
     department = models.ForeignKey(Department, on_delete=models.CASCADE)

@@ -43,3 +43,11 @@ class DepartmentSerializer(DynamicFieldsModelSerializer):
     class Meta:
         model = Department
         fields = '__all__'
+
+
+class Patient_recordsSerializer(DynamicFieldsModelSerializer):
+    class Meta:
+        model = Patient_Records
+        fields = '__all__'
+
+    
