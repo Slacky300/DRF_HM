@@ -1,30 +1,28 @@
 
 from . models import *
 from . serializers import *
-from rest_framework import generics, permissions
+from rest_framework import generics
 from rest_framework.response import Response
-from rest_framework.decorators import api_view,permission_classes
+from rest_framework.decorators import api_view,permission_classes,authentication_classes
 from django.contrib.auth.models import Group
 from rest_framework.views import APIView
 from django.contrib.auth import login, logout
 from rest_framework.authtoken.models import Token
 from rest_framework import status
 from django.contrib.auth.hashers import check_password
+from . perimissions import *
+from rest_framework.authentication import BasicAuthentication, TokenAuthentication
 
 class DepartmentGet(generics.ListCreateAPIView):
 
-    queryset = Department.objects.all()
-    serializer_class = DepartmentSerializer
 
-
-class DepartementGetUpDel(generics.RetrieveDestroyAPIView):
-    
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
 
 
 
-@api_view(["GET"])
+@api_view(["GET","PUT"])
+@authentication_classes([TokenAuthentication])
 def getPatientsOfDept(request, pk):
 
     dept = Department.objects.get(pk = pk)
@@ -33,7 +31,8 @@ def getPatientsOfDept(request, pk):
     return Response(serializer.data)
 
 
-@api_view(["GET"])
+@api_view(["GET","PUT"])
+@authentication_classes([TokenAuthentication])
 def getDoctorsOfDept(request,pk):
     
     dept = Department.objects.get(pk = pk)
@@ -73,7 +72,7 @@ class RegisterUser(APIView):
       
         return Response({'status': 201, 'token': str(token), 'message': "User created successfully"})
     
-@api_view(["POST"])
+@api_view(["GET"])
 def loginUser(request):
 
     username = request.data["username"]
@@ -95,12 +94,17 @@ def loginUser(request):
 @api_view(["GET"])
 def logoutUser(request):
 
-    if request.user.auth_token:
-        request.user.auth_token.delete()
+    token =  Token.objects.get(user = request.user)
+    token.delete()
     logout(request)
     return Response({"msg": "Logged out successfully"}, status=status.HTTP_200_OK)
 
+
+
 class GetDoctors(APIView):
+
+    permission_classes = [IsDoctor]
+    authentication_classes = [TokenAuthentication]
 
     def get(self,request):
         fields = ('id', 'username')
@@ -113,13 +117,17 @@ class GetDoctors(APIView):
         serializer = UserSerializer(data = request.data)
         if serializer.is_valid():
             return Response({"status": 201,"msg":"Created"})
+        
+  
 
 
 @api_view(["GET","PUT","DELETE"])
+@permission_classes([IsOwnerOrReadOnly])
 def updateDoctor(request,pk):
 
+    
     try: 
-        doctor = UserAccount.objects.get(pk = pk)
+        doctor = UserAccount.objects.get(pk = pk, is_doctor = True)
     except UserAccount.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
 
@@ -146,9 +154,11 @@ def updateDoctor(request,pk):
 
 class GetPatients(generics.ListCreateAPIView):
     
+    permission_classes = [IsDoctor]
+
    
     queryset = UserAccount.objects.filter(is_patient = True)
-    serializer = UserSerializer()
+    serializer_class = UserSerializer
 
     def list(self, request):
        
@@ -160,10 +170,14 @@ class GetPatients(generics.ListCreateAPIView):
 
 
 @api_view(["GET","PUT","DELETE"])
+@permission_classes([IsSameDoctorOfPatient])
 def updatePatient(request,pk):
 
+
+
     try: 
-        patient = UserAccount.objects.get(pk = pk)
+        patient = UserAccount.objects.get(pk = pk, is_patient = True)
+
     except UserAccount.DoesNotExist:
         return Response(status=status.HTTP_404_NOT_FOUND)
 
@@ -188,12 +202,24 @@ def updatePatient(request,pk):
 
 
 class PatientRecords(generics.ListCreateAPIView):
+    permission_classes = [IsDoctor]
 
-    queryset = Patient_Records.objects.all()
     serializer_class = Patient_recordsSerializer
+
+    def get_queryset(self):
+        return Patient_Records.objects.filter(department = self.request.user.department)
+    
+    def list(self,request):
+        queryset = self.get_queryset()
+        serializer = Patient_recordsSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    
+    
 
 
 @api_view(["GET","PUT","DELETE"])
+@permission_classes([IsSameDoctorAndPatient])
 def updateRecords(request,pk):
 
     try: 
