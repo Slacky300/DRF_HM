@@ -39,3 +39,12 @@ class IsSameDoctorAndPatient(permissions.BasePermission):
            return True
         
         return obj.patient_id.id == request.user.id or obj.doctor_name.id == request.user.id
+    
+
+class IsDoctorOfSameDept(permissions.BasePermission):
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+           return True
+         
+        return obj.department == request.user.department and request.user.is_doctor

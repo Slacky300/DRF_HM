@@ -11,97 +11,11 @@ from rest_framework.authtoken.models import Token
 from rest_framework import status
 from django.contrib.auth.hashers import check_password
 from . perimissions import *
-from rest_framework.authentication import BasicAuthentication, TokenAuthentication
-
-class DepartmentGet(generics.ListCreateAPIView):
-
-
-    queryset = Department.objects.all()
-    serializer_class = DepartmentSerializer
+from rest_framework.authentication import  TokenAuthentication
 
 
 
-@api_view(["GET","PUT"])
-@authentication_classes([TokenAuthentication])
-def getPatientsOfDept(request, pk):
-
-    dept = Department.objects.get(pk = pk)
-    patient = UserAccount.objects.filter(department = dept, is_patient = True)
-    serializer = UserSerializer(patient, many = True)
-    return Response(serializer.data)
-
-
-@api_view(["GET","PUT"])
-@authentication_classes([TokenAuthentication])
-def getDoctorsOfDept(request,pk):
-    
-    dept = Department.objects.get(pk = pk)
-    patient = UserAccount.objects.filter(department = dept, is_doctor = True)
-    serializer = UserSerializer(patient, many = True)
-    return Response(serializer.data)
-
-
-
-class RegisterUser(APIView):
-
-    def post(self,request):
-        serializer = UserSerializer(data = request.data)
-        if not serializer.is_valid():
-            
-            return Response({'status': 403, 'errors': serializer.errors,'message': "Please provide valid data"})
-        serializer.save()
-        user = UserAccount.objects.get(username = serializer.data['username'])
-        if request.data["is_patient"]:
-            group = Group.objects.get(name = "Patients")
-            user.groups.add(group)
-            user.save()
-        elif request.data["is_doctor"]:
-            if not request.data["department"]:
-                return Response({"status": 403, "message": "Department id must be provided"})
-            user.is_doctor = True
-            dept = Department.objects.get(pk = request.data["department"])
-            if not dept:
-                return Response({"status": 404, "message": "No such department exists"})
-            
-            user.department = dept
-            user.is_patient = False
-            group = Group.objects.get(name = "Doctors")
-            user.groups.add(group)
-            user.save()
-        token , _ = Token.objects.get_or_create(user=user)
-      
-        return Response({'status': 201, 'token': str(token), 'message': "User created successfully"})
-    
-@api_view(["GET"])
-def loginUser(request):
-
-    username = request.data["username"]
-    password = request.data["password"]
-
-    try:
-
-        user = UserAccount.objects.get(username = username)
-        if not check_password(password, user.password):
-            return Response(status=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION)
-        token = Token.objects.get_or_create(user = user)[0].key
-        login(request,user)
-        return Response({"token": token, "msg": "Successfully logged in!"}, status=status.HTTP_200_OK)
-    except UserAccount.DoesNotExist:
-        
-        return Response(status=status.HTTP_404_NOT_FOUND)
-
-
-@api_view(["GET"])
-def logoutUser(request):
-
-    token =  Token.objects.get(user = request.user)
-    token.delete()
-    logout(request)
-    return Response({"msg": "Logged out successfully"}, status=status.HTTP_200_OK)
-
-
-
-class GetDoctors(APIView):
+class GetAndAddDoctors(APIView):
 
     permission_classes = [IsDoctor]
     authentication_classes = [TokenAuthentication]
@@ -118,11 +32,11 @@ class GetDoctors(APIView):
         if serializer.is_valid():
             return Response({"status": 201,"msg":"Created"})
         
-  
 
 
 @api_view(["GET","PUT","DELETE"])
 @permission_classes([IsOwnerOrReadOnly])
+@authentication_classes([TokenAuthentication])
 def updateDoctor(request,pk):
 
     
@@ -152,10 +66,10 @@ def updateDoctor(request,pk):
     
 
 
-class GetPatients(generics.ListCreateAPIView):
+class GetAndAddPatients(generics.ListCreateAPIView):
     
     permission_classes = [IsDoctor]
-
+    authentication_classes = [TokenAuthentication]
    
     queryset = UserAccount.objects.filter(is_patient = True)
     serializer_class = UserSerializer
@@ -171,6 +85,7 @@ class GetPatients(generics.ListCreateAPIView):
 
 @api_view(["GET","PUT","DELETE"])
 @permission_classes([IsSameDoctorOfPatient])
+@authentication_classes({TokenAuthentication})
 def updatePatient(request,pk):
 
 
@@ -201,9 +116,12 @@ def updatePatient(request,pk):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+
+
+
 class PatientRecords(generics.ListCreateAPIView):
     permission_classes = [IsDoctor]
-
+    authentication_classes = [TokenAuthentication]
     serializer_class = Patient_recordsSerializer
 
     def get_queryset(self):
@@ -214,12 +132,28 @@ class PatientRecords(generics.ListCreateAPIView):
         serializer = Patient_recordsSerializer(queryset, many=True)
         return Response(serializer.data)
     
+    def post(self, request):
+
+        serializer = Patient_recordsSerializer(data = request.data)
+        try:
+            if serializer.is_valid():
+                serializer.save()
+            patient = UserAccount.objects.get(pk = serializer.data["patient_id"])
+            department = Department.objects.get(pk = serializer.data["department"])
+            if request.user.department != department:
+                return Response({"msg": "Not authorized to add records, department does not match"}, status= status.HTTP_406_NOT_ACCEPTABLE)
+            patient.department = department
+            patient.save()
+            return Response({"msg": "Created record"}, status=status.HTTP_200_OK)
+        except UserAccount.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
     
     
 
 
 @api_view(["GET","PUT","DELETE"])
 @permission_classes([IsSameDoctorAndPatient])
+@authentication_classes([TokenAuthentication])
 def updateRecords(request,pk):
 
     try: 
@@ -245,3 +179,111 @@ def updateRecords(request,pk):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 
+
+
+class DepartmentGet(generics.ListCreateAPIView):
+
+
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+
+
+
+@api_view(["GET","PUT"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsDoctorOfSameDept])
+def getPatientsOfDept(request, pk):
+
+    dept = Department.objects.get(pk = pk)
+    patient = UserAccount.objects.filter(department = dept, is_patient = True)
+    serializer = UserSerializer(patient, many = True, fields = ["id", "username", "email"])
+    return Response(serializer.data)
+
+
+@api_view(["GET","PUT"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsDoctorOfSameDept])
+def getDoctorsOfDept(request,pk):
+    
+    dept = Department.objects.get(pk = pk)
+    patient = UserAccount.objects.filter(department = dept, is_doctor = True)
+    serializer = UserSerializer(patient, many = True, fields = ["id", "username", "email"])
+    return Response(serializer.data)
+
+
+
+class RegisterUser(APIView):
+
+    def post(self,request):
+        serializer = UserSerializer(data = request.data)
+
+        if not serializer.is_valid():
+            
+            return Response({'status': 403, 'errors': serializer.errors,'message': "Please provide valid data"})
+        
+        serializer.save()
+
+        user = UserAccount.objects.get(username = serializer.data['username'])
+
+        if "is_doctor" in request.data:
+            if not request.data["department"]:
+                return Response({"status": 403, "message": "Department id must be provided"})
+            user.is_doctor = True
+            dept = Department.objects.get(pk = request.data["department"])
+            if not dept:
+                return Response({"status": 404, "message": "No such department exists"})
+            user.department = dept
+            user.is_patient = False
+            group = Group.objects.get(name = "Doctors")
+            user.groups.add(group)
+            user.save()
+        else:
+            group = Group.objects.get(name = "Patients")
+            user.groups.add(group)
+            user.save()
+         
+        token , _ = Token.objects.get_or_create(user=user)
+      
+        return Response({'status': 201, 'token': str(token), 'message': "User created successfully"})
+    
+
+
+class LoginUser(APIView):
+
+    def get(self,request):
+        username = request.data["username"]
+        password = request.data["password"]
+
+        try:
+
+            user = UserAccount.objects.get(username = username)
+            if not check_password(password, user.password):
+                return Response(status=status.HTTP_203_NON_AUTHORITATIVE_INFORMATION)
+            token = Token.objects.get_or_create(user = user)[0].key
+            login(request,user)
+            return Response({"token": token, "msg": "Successfully logged in!"}, status=status.HTTP_200_OK)
+        except UserAccount.DoesNotExist:
+            
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+
+class LogoutUser(APIView):
+
+    def post(self, request):
+        try:
+            token =  Token.objects.get(user = request.user)
+            token.delete()
+            logout(request)
+        except Token.DoesNotExist:
+            logout(request)
+        return Response({"msg": "Logged out successfully"}, status=status.HTTP_200_OK)
+
+
+
+    
+
+
+
+
+  
