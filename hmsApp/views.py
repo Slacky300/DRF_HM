@@ -12,8 +12,12 @@ from rest_framework import status
 from django.contrib.auth.hashers import check_password
 from . perimissions import *
 from rest_framework.authentication import  TokenAuthentication
+from django.http import HttpResponse
 
 
+def home(request):
+
+    return HttpResponse("Hospital management system")
 
 class GetAndAddDoctors(APIView):
 
